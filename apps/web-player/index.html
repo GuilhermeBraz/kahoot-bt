@@ -1,18 +1,17 @@
 <!doctype html>
-<html lang="en">
+<html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Kahoot-BT MVP Player</title>
+    <title>Kahoot-BT MVP</title>
     <style>
       :root {
         --bg: #0f172a;
         --card: #111827;
         --text: #e5e7eb;
         --muted: #9ca3af;
-        --ok: #16a34a;
-        --bad: #dc2626;
         --accent: #0ea5e9;
+        --warn: #f59e0b;
       }
       * { box-sizing: border-box; }
       body {
@@ -37,6 +36,7 @@
       h1, h2, h3 { margin: 0 0 8px; }
       .grid { display: grid; gap: 8px; }
       .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
       input, button {
         width: 100%;
         border-radius: 10px;
@@ -47,10 +47,13 @@
       }
       button { cursor: pointer; }
       button:hover { border-color: var(--accent); }
+      .active-mode {
+        border-color: var(--accent);
+        box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--accent) 70%, white 30%);
+      }
       .muted { color: var(--muted); font-size: 14px; }
+      .warn { color: var(--warn); }
       .hidden { display: none; }
-      .ok { color: var(--ok); }
-      .bad { color: var(--bad); }
       .answer-btn { text-align: left; }
       .pill {
         display: inline-block;
@@ -65,30 +68,48 @@
   <body>
     <div class="wrap">
       <div class="card">
-        <h1>Kahoot-BT • MVP Player</h1>
-        <p class="muted">Etapa 3: cliente web mínimo para debug com API realtime.</p>
+        <h1>Kahoot-BT • MVP</h1>
+        <p class="muted">Escolha seu modo e entre na sala.</p>
       </div>
 
-      <div class="card grid" id="join-card">
-        <h2>Entrar na sala</h2>
+      <div class="card grid" id="mode-card">
+        <h2>1) Escolha o modo</h2>
+        <div class="grid grid-3">
+          <button id="modeOrganizerBtn">Organizador (criar sala)</button>
+          <button id="modeParticipantBtn">Participante (join)</button>
+          <button id="modeDebugBtn">Debug (ver tudo)</button>
+        </div>
+        <p class="muted" id="modeHint">Selecione um modo para continuar.</p>
+      </div>
+
+      <div class="card grid hidden" id="join-card">
+        <h2>2) Conexão</h2>
         <input id="apiUrl" placeholder="API URL (ex: http://localhost:3333)" />
+
+        <div id="create-room-wrap" class="hidden grid grid-2">
+          <input id="generatedRoomId" placeholder="Room ID gerado" readonly />
+          <button id="generateRoomBtn">Gerar Room ID</button>
+        </div>
+
         <input id="roomId" placeholder="Room ID" />
         <input id="username" placeholder="Username" />
+
         <button id="joinBtn">Conectar</button>
-        <p class="muted">Quem entrar primeiro vira host automaticamente no MVP atual.</p>
+        <p class="muted" id="joinHint"></p>
       </div>
 
       <div class="card hidden" id="session-card">
         <h2>Sessão</h2>
         <p id="sessionInfo" class="muted"></p>
+        <span class="pill" id="modeTag">modo: -</span>
         <span class="pill" id="roomStatus">room status: waiting</span>
       </div>
 
       <div class="card hidden" id="host-card">
-        <h2>Host Controls (debug)</h2>
+        <h2>Controles do Organizador</h2>
         <div class="grid grid-2">
-          <button id="startBtn">host.start_game</button>
-          <button id="nextBtn">host.next_question</button>
+          <button id="startBtn">Iniciar jogo</button>
+          <button id="nextBtn">Próxima pergunta</button>
         </div>
       </div>
 
@@ -110,8 +131,8 @@
         <ol id="ranking"></ol>
       </div>
 
-      <div class="card">
-        <h2>Logs</h2>
+      <div class="card hidden" id="logs-card">
+        <h2>Logs (debug)</h2>
         <pre id="logs" style="white-space: pre-wrap; margin: 0"></pre>
       </div>
     </div>

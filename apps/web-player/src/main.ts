@@ -13,22 +13,36 @@ import {
 
 /**
  * Dependency note:
- * - This client depends on `packages/shared-types` for event names and payload types.
- * - It intentionally does not know game rules (score formula etc.); server is authoritative.
+ * - Depends on `shared-types` only for event names/payload contracts.
+ * - Server remains source of truth for game state and scoring.
  */
 
+type UiMode = "organizer" | "participant" | "debug";
+
 let socket: Socket | null = null;
+let mode: UiMode | null = null;
 let currentRoomId = "";
 let currentRoundId = "";
 let connectedUsername = "";
+let isHost = false;
 
 const el = {
+  modeOrganizerBtn: document.getElementById("modeOrganizerBtn") as HTMLButtonElement,
+  modeParticipantBtn: document.getElementById("modeParticipantBtn") as HTMLButtonElement,
+  modeDebugBtn: document.getElementById("modeDebugBtn") as HTMLButtonElement,
+  modeHint: document.getElementById("modeHint") as HTMLParagraphElement,
+  joinCard: document.getElementById("join-card") as HTMLDivElement,
   apiUrl: document.getElementById("apiUrl") as HTMLInputElement,
+  createRoomWrap: document.getElementById("create-room-wrap") as HTMLDivElement,
+  generatedRoomId: document.getElementById("generatedRoomId") as HTMLInputElement,
+  generateRoomBtn: document.getElementById("generateRoomBtn") as HTMLButtonElement,
   roomId: document.getElementById("roomId") as HTMLInputElement,
   username: document.getElementById("username") as HTMLInputElement,
   joinBtn: document.getElementById("joinBtn") as HTMLButtonElement,
+  joinHint: document.getElementById("joinHint") as HTMLParagraphElement,
   sessionCard: document.getElementById("session-card") as HTMLDivElement,
   sessionInfo: document.getElementById("sessionInfo") as HTMLParagraphElement,
+  modeTag: document.getElementById("modeTag") as HTMLSpanElement,
   roomStatus: document.getElementById("roomStatus") as HTMLSpanElement,
   hostCard: document.getElementById("host-card") as HTMLDivElement,
   startBtn: document.getElementById("startBtn") as HTMLButtonElement,
@@ -42,10 +56,12 @@ const el = {
   correctAnswer: document.getElementById("correctAnswer") as HTMLParagraphElement,
   rankCard: document.getElementById("rank-card") as HTMLDivElement,
   ranking: document.getElementById("ranking") as HTMLOListElement,
+  logsCard: document.getElementById("logs-card") as HTMLDivElement,
   logs: document.getElementById("logs") as HTMLPreElement
 };
 
 function log(message: string, payload?: unknown): void {
+  if (mode !== "debug") return;
   const line = payload ? `${message} ${JSON.stringify(payload)}` : message;
   el.logs.textContent = `${new Date().toISOString()} ${line}\n${el.logs.textContent}`;
 }
@@ -63,6 +79,52 @@ function show(node: HTMLElement): void {
   node.classList.remove("hidden");
 }
 
+function hide(node: HTMLElement): void {
+  node.classList.add("hidden");
+}
+
+function randomRoomId(): string {
+  return `room_${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+}
+
+function setMode(nextMode: UiMode): void {
+  mode = nextMode;
+
+  el.modeOrganizerBtn.classList.remove("active-mode");
+  el.modeParticipantBtn.classList.remove("active-mode");
+  el.modeDebugBtn.classList.remove("active-mode");
+
+  show(el.joinCard);
+
+  if (nextMode === "organizer") {
+    el.modeOrganizerBtn.classList.add("active-mode");
+    el.modeHint.textContent = "Modo organizador: gere a sala e controle o jogo.";
+    el.joinHint.textContent = "Você deve entrar primeiro para assumir o host no MVP atual.";
+    show(el.createRoomWrap);
+    el.roomId.value = randomRoomId();
+    el.generatedRoomId.value = el.roomId.value;
+  }
+
+  if (nextMode === "participant") {
+    el.modeParticipantBtn.classList.add("active-mode");
+    el.modeHint.textContent = "Modo participante: apenas entre em uma sala existente e responda.";
+    el.joinHint.textContent = "Informe o Room ID fornecido pelo organizador.";
+    hide(el.createRoomWrap);
+  }
+
+  if (nextMode === "debug") {
+    el.modeDebugBtn.classList.add("active-mode");
+    el.modeHint.textContent = "Modo debug: mostra logs e controles completos para testes.";
+    el.joinHint.textContent = "Use este modo para investigar eventos e estados.";
+    show(el.createRoomWrap);
+    if (!el.roomId.value.trim()) {
+      el.roomId.value = randomRoomId();
+    }
+    el.generatedRoomId.value = el.roomId.value;
+    show(el.logsCard);
+  }
+}
+
 function sendJoin(): void {
   if (!socket) return;
 
@@ -76,6 +138,11 @@ function sendJoin(): void {
 }
 
 function connect(): void {
+  if (!mode) {
+    alert("Escolha um modo primeiro.");
+    return;
+  }
+
   const apiUrl = el.apiUrl.value.trim() || "http://localhost:3333";
   const roomId = el.roomId.value.trim();
   const username = el.username.value.trim();
@@ -89,6 +156,7 @@ function connect(): void {
   connectedUsername = username;
 
   const url = new URL(window.location.href);
+  url.searchParams.set("mode", mode);
   url.searchParams.set("roomId", roomId);
   url.searchParams.set("username", username);
   window.history.replaceState({}, "", url);
@@ -97,9 +165,10 @@ function connect(): void {
 
   socket.on("connect", () => {
     show(el.sessionCard);
+    el.modeTag.textContent = `modo: ${mode}`;
     el.sessionInfo.textContent = `Conectado como ${connectedUsername} em ${currentRoomId}`;
-    log("socket connected", { socketId: socket?.id });
     sendJoin();
+    log("socket connected", { socketId: socket?.id });
   });
 
   socket.on("disconnect", () => {
@@ -108,12 +177,23 @@ function connect(): void {
 
   socket.on("debug.error", (msg) => {
     log("debug.error", msg);
+    if (mode !== "debug") {
+      el.joinHint.textContent = `Erro: ${String(msg?.code ?? "unknown")}`;
+      el.joinHint.classList.add("warn");
+    }
   });
 
   socket.on("debug.join_ack", (msg) => {
+    isHost = Boolean(msg?.becameHost);
     log("debug.join_ack", msg);
-    if (msg?.becameHost) {
+
+    if (isHost) {
       show(el.hostCard);
+    }
+
+    if (mode === "organizer" && !isHost) {
+      el.joinHint.textContent = "Você entrou como organizador, mas esta sala já tinha host.";
+      el.joinHint.classList.add("warn");
     }
   });
 
@@ -191,24 +271,41 @@ function submitAnswer(optionId: string): void {
   log("emit player.submit_answer", payload);
 }
 
+el.modeOrganizerBtn.addEventListener("click", () => setMode("organizer"));
+el.modeParticipantBtn.addEventListener("click", () => setMode("participant"));
+el.modeDebugBtn.addEventListener("click", () => setMode("debug"));
+
+el.generateRoomBtn.addEventListener("click", () => {
+  const next = randomRoomId();
+  el.roomId.value = next;
+  el.generatedRoomId.value = next;
+});
+
 el.joinBtn.addEventListener("click", connect);
 
 el.startBtn.addEventListener("click", () => {
-  if (!socket) return;
+  if (!socket || !isHost) return;
   const payload = { roomId: currentRoomId };
   socket.emit(ClientToServerEvent.HOST_START_GAME, env(ClientToServerEvent.HOST_START_GAME, payload));
   log("emit host.start_game", payload);
 });
 
 el.nextBtn.addEventListener("click", () => {
-  if (!socket) return;
+  if (!socket || !isHost) return;
   const payload = { roomId: currentRoomId };
   socket.emit(ClientToServerEvent.HOST_NEXT_QUESTION, env(ClientToServerEvent.HOST_NEXT_QUESTION, payload));
   log("emit host.next_question", payload);
 });
 
-// Small convenience for quick manual tests.
+// Quick defaults from URL.
 const query = new URLSearchParams(window.location.search);
 el.apiUrl.value = query.get("apiUrl") ?? "http://localhost:3333";
-el.roomId.value = query.get("roomId") ?? "room_debug";
+el.roomId.value = query.get("roomId") ?? "";
 el.username.value = query.get("username") ?? "";
+
+const preMode = query.get("mode");
+if (preMode === "organizer" || preMode === "participant" || preMode === "debug") {
+  setMode(preMode);
+} else {
+  setMode("participant");
+}
