@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kahoot-BT MVP Player</title>
+    <style>
+      :root {
+        --bg: #0f172a;
+        --card: #111827;
+        --text: #e5e7eb;
+        --muted: #9ca3af;
+        --ok: #16a34a;
+        --bad: #dc2626;
+        --accent: #0ea5e9;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial;
+        background: radial-gradient(1200px 700px at 20% 0%, #1e293b 0%, var(--bg) 55%);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 920px;
+        margin: 24px auto;
+        padding: 0 16px;
+        display: grid;
+        gap: 12px;
+      }
+      .card {
+        border: 1px solid #1f2937;
+        background: color-mix(in oklab, var(--card) 92%, #000 8%);
+        border-radius: 14px;
+        padding: 14px;
+      }
+      h1, h2, h3 { margin: 0 0 8px; }
+      .grid { display: grid; gap: 8px; }
+      .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      input, button {
+        width: 100%;
+        border-radius: 10px;
+        border: 1px solid #374151;
+        background: #0b1220;
+        color: var(--text);
+        padding: 10px 12px;
+      }
+      button { cursor: pointer; }
+      button:hover { border-color: var(--accent); }
+      .muted { color: var(--muted); font-size: 14px; }
+      .hidden { display: none; }
+      .ok { color: var(--ok); }
+      .bad { color: var(--bad); }
+      .answer-btn { text-align: left; }
+      .pill {
+        display: inline-block;
+        font-size: 12px;
+        border: 1px solid #374151;
+        border-radius: 999px;
+        padding: 3px 8px;
+      }
+      ol { margin: 8px 0 0; padding-left: 22px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h1>Kahoot-BT • MVP Player</h1>
+        <p class="muted">Etapa 3: cliente web mínimo para debug com API realtime.</p>
+      </div>
+
+      <div class="card grid" id="join-card">
+        <h2>Entrar na sala</h2>
+        <input id="apiUrl" placeholder="API URL (ex: http://localhost:3333)" />
+        <input id="roomId" placeholder="Room ID" />
+        <input id="username" placeholder="Username" />
+        <button id="joinBtn">Conectar</button>
+        <p class="muted">Quem entrar primeiro vira host automaticamente no MVP atual.</p>
+      </div>
+
+      <div class="card hidden" id="session-card">
+        <h2>Sessão</h2>
+        <p id="sessionInfo" class="muted"></p>
+        <span class="pill" id="roomStatus">room status: waiting</span>
+      </div>
+
+      <div class="card hidden" id="host-card">
+        <h2>Host Controls (debug)</h2>
+        <div class="grid grid-2">
+          <button id="startBtn">host.start_game</button>
+          <button id="nextBtn">host.next_question</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="question-card">
+        <h2>Pergunta atual</h2>
+        <h3 id="questionTitle">-</h3>
+        <p class="muted" id="timer">Tempo restante: -</p>
+        <div class="grid" id="answers"></div>
+        <p id="answerAck" class="muted"></p>
+      </div>
+
+      <div class="card hidden" id="round-card">
+        <h2>Resultado da rodada</h2>
+        <p id="correctAnswer" class="muted">Correta: -</p>
+      </div>
+
+      <div class="card hidden" id="rank-card">
+        <h2>Leaderboard</h2>
+        <ol id="ranking"></ol>
+      </div>
+
+      <div class="card">
+        <h2>Logs</h2>
+        <pre id="logs" style="white-space: pre-wrap; margin: 0"></pre>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
