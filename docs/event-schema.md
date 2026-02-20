@@ -89,6 +89,27 @@ Validações:
 - sala em `in_progress`.
 - não pode existir round `active`.
 
+### `host.set_question_bank`
+
+```ts
+export type HostSetQuestionBankPayload = {
+  roomId: string;
+  source: "manual" | "csv";
+  questions: Array<{
+    title: string;
+    options: [string, string, string, string];
+    correctOptionIndex: 0 | 1 | 2 | 3;
+  }>;
+};
+```
+
+Validações:
+
+- socket deve ser host da sala.
+- sala deve estar em `waiting` (antes de iniciar o jogo).
+- lista deve conter ao menos 1 pergunta.
+- cada pergunta deve ter 4 alternativas preenchidas.
+
 ### `player.submit_answer`
 
 ```ts
@@ -116,6 +137,8 @@ export type RoomStateUpdatedPayload = {
   status: RoomStatus;
   players: Array<{ playerId: string; username: string }>;
   currentRoundId?: string;
+  questionCount: number;
+  questionSource: "default" | "manual" | "csv";
 };
 ```
 
@@ -288,3 +311,4 @@ Desempate do ranking:
 
 - Coerente com `README.md`: `room.join`, `host.start_game`, `host.next_question`, `player.submit_answer`, `question.timer_tick`, `answer.reveal`, ranking cumulativo e score por ms.
 - Coerente com `docs/architecture.md`: estados `waiting/in_progress/finished`, round `pending/active/scored/closed`, `question.started`, `question.ended`, `leaderboard.updated`, `game.ended`.
+- Extensão MVP: `host.set_question_bank` habilita perguntas customizadas (manual/CSV) por sala.

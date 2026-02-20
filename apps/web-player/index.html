@@ -103,6 +103,7 @@
         <p id="sessionInfo" class="muted"></p>
         <span class="pill" id="modeTag">modo: -</span>
         <span class="pill" id="roomStatus">room status: waiting</span>
+        <span class="pill" id="questionSourceTag">questions: default (1)</span>
       </div>
 
       <div class="card hidden" id="host-card">
@@ -110,6 +111,43 @@
         <div class="grid grid-2">
           <button id="startBtn">Iniciar jogo</button>
           <button id="nextBtn">Próxima pergunta</button>
+        </div>
+      </div>
+
+      <div class="card hidden" id="question-bank-card">
+        <h2>Banco de Perguntas (Organizador)</h2>
+        <p class="muted">Você pode criar na hora ou importar CSV. O servidor confirma a origem ativa.</p>
+
+        <div class="grid">
+          <h3>Adicionar pergunta manual</h3>
+          <input id="qTitle" placeholder="Enunciado da pergunta" />
+          <div class="grid grid-2">
+            <input id="qA" placeholder="Alternativa A" />
+            <input id="qB" placeholder="Alternativa B" />
+            <input id="qC" placeholder="Alternativa C" />
+            <input id="qD" placeholder="Alternativa D" />
+          </div>
+          <input id="qCorrectIndex" type="number" min="1" max="4" value="1" placeholder="Resposta correta (1-4)" />
+          <button id="addManualQuestionBtn">Adicionar pergunta ao rascunho</button>
+        </div>
+
+        <div class="grid">
+          <h3>Importar CSV</h3>
+          <p class="muted">Formato: title,optionA,optionB,optionC,optionD,correctIndex(1-4)</p>
+          <textarea id="csvInput" rows="6" style="width: 100%; border-radius: 10px; border: 1px solid #374151; background: #0b1220; color: var(--text); padding: 10px 12px;"></textarea>
+          <input id="csvFileInput" type="file" accept=".csv,text/csv" />
+          <button id="parseCsvBtn">Carregar CSV no rascunho</button>
+        </div>
+
+        <div class="grid">
+          <h3>Rascunho atual</h3>
+          <ol id="draftQuestions"></ol>
+          <div class="grid grid-2">
+            <button id="publishManualBtn">Publicar rascunho como Manual</button>
+            <button id="publishCsvBtn">Publicar rascunho como CSV</button>
+          </div>
+          <button id="clearDraftBtn">Limpar rascunho</button>
+          <p class="muted" id="questionBankAck"></p>
         </div>
       </div>
 

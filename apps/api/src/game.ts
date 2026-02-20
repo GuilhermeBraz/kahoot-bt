@@ -1,4 +1,10 @@
-import { SCORING, type PlayerRankingItem, type Question, type RoomStatus } from "../../../packages/shared-types/src/index";
+import {
+  SCORING,
+  type HostQuestionInput,
+  type PlayerRankingItem,
+  type Question,
+  type RoomStatus
+} from "../../../packages/shared-types/src/index";
 
 type PlayerState = {
   playerId: string;
@@ -22,10 +28,16 @@ type AnswerState = {
 type RoundState = {
   roundId: string;
   question: Question;
+  correctOptionId: string;
   status: "active" | "ended";
   startedAtMs: number;
   endsAtMs: number;
   answersByPlayerId: Map<string, AnswerState>;
+};
+
+type StoredQuestion = {
+  question: Question;
+  correctOptionId: string;
 };
 
 export type RoomState = {
@@ -37,6 +49,8 @@ export type RoomState = {
   rounds: RoundState[];
   currentRound?: RoundState;
   currentQuestionIndex: number;
+  questionBank: StoredQuestion[];
+  questionSource: "default" | "manual" | "csv";
 };
 
 /**
@@ -47,18 +61,21 @@ export type RoomState = {
 export class GameStore {
   private readonly rooms = new Map<string, RoomState>();
 
-  // MVP question bank. In later steps, this will come from host CRUD + DB.
-  private readonly questions: Question[] = [
+  // Default fallback so room remains playable even without host-configured questions.
+  private readonly defaultQuestionBank: StoredQuestion[] = [
     {
-      questionId: "q1",
-      title: "Qual linguagem executa no navegador por padrão?",
-      options: [
-        { optionId: "a", text: "Java", index: 0 },
-        { optionId: "b", text: "JavaScript", index: 1 },
-        { optionId: "c", text: "Python", index: 2 },
-        { optionId: "d", text: "Rust", index: 3 }
-      ],
-      durationMs: 120000
+      question: {
+        questionId: "q1",
+        title: "Qual linguagem executa no navegador por padrão?",
+        options: [
+          { optionId: "a", text: "Java", index: 0 },
+          { optionId: "b", text: "JavaScript", index: 1 },
+          { optionId: "c", text: "Python", index: 2 },
+          { optionId: "d", text: "Rust", index: 3 }
+        ],
+        durationMs: 120000
+      },
+      correctOptionId: "b"
     }
   ];
 
@@ -71,7 +88,9 @@ export class GameStore {
         playersBySocketId: new Map(),
         playersById: new Map(),
         rounds: [],
-        currentQuestionIndex: -1
+        currentQuestionIndex: -1,
+        questionBank: this.defaultQuestionBank,
+        questionSource: "default"
       };
       this.rooms.set(roomId, room);
     }
@@ -130,7 +149,47 @@ export class GameStore {
   startGame(room: RoomState, callerSocketId: string): void {
     this.assertHost(room, callerSocketId);
     if (room.status !== "waiting") throw new Error("ROOM_NOT_WAITING");
+    if (room.questionBank.length === 0) throw new Error("QUESTION_BANK_EMPTY");
     room.status = "in_progress";
+  }
+
+  setQuestionBank(input: {
+    room: RoomState;
+    callerSocketId: string;
+    source: "manual" | "csv";
+    questions: HostQuestionInput[];
+  }): { questionCount: number; source: "manual" | "csv" } {
+    this.assertHost(input.room, input.callerSocketId);
+    if (input.room.status !== "waiting") throw new Error("CANNOT_EDIT_QUESTION_BANK_AFTER_START");
+    if (input.questions.length === 0) throw new Error("QUESTION_BANK_EMPTY");
+
+    const nextBank: StoredQuestion[] = input.questions.map((q, idx) => {
+      const title = q.title.trim();
+      const optionsText = q.options.map((opt) => opt.trim());
+      if (!title) throw new Error(`INVALID_QUESTION_TITLE_${idx + 1}`);
+      if (optionsText.some((opt) => !opt)) throw new Error(`INVALID_QUESTION_OPTION_${idx + 1}`);
+
+      const optionIds = ["a", "b", "c", "d"] as const;
+      const options = optionsText.map((text, optionIndex) => ({
+        optionId: optionIds[optionIndex]!,
+        text,
+        index: optionIndex as 0 | 1 | 2 | 3
+      })) as Question["options"];
+
+      return {
+        question: {
+          questionId: `q_${idx + 1}`,
+          title,
+          options,
+          durationMs: 120000
+        },
+        correctOptionId: optionIds[q.correctOptionIndex]
+      };
+    });
+
+    input.room.questionBank = nextBank;
+    input.room.questionSource = input.source;
+    return { questionCount: nextBank.length, source: input.source };
   }
 
   nextQuestion(room: RoomState, callerSocketId: string): RoundState {
@@ -139,16 +198,17 @@ export class GameStore {
     if (room.currentRound && room.currentRound.status === "active") throw new Error("ROUND_ALREADY_ACTIVE");
 
     room.currentQuestionIndex += 1;
-    const question = this.questions[room.currentQuestionIndex];
-    if (!question) throw new Error("NO_MORE_QUESTIONS");
+    const storedQuestion = room.questionBank[room.currentQuestionIndex];
+    if (!storedQuestion) throw new Error("NO_MORE_QUESTIONS");
 
     const startedAtMs = Date.now();
     const round: RoundState = {
       roundId: `r_${room.currentQuestionIndex + 1}`,
-      question,
+      question: storedQuestion.question,
+      correctOptionId: storedQuestion.correctOptionId,
       status: "active",
       startedAtMs,
-      endsAtMs: startedAtMs + question.durationMs,
+      endsAtMs: startedAtMs + storedQuestion.question.durationMs,
       answersByPlayerId: new Map()
     };
 
@@ -168,8 +228,7 @@ export class GameStore {
     if (round.answersByPlayerId.has(player.playerId)) throw new Error("ALREADY_ANSWERED");
     if (input.nowMs > round.endsAtMs) throw new Error("ANSWER_OUT_OF_TIME");
 
-    const correctOptionId = round.question.options[1].optionId; // question fake: "JavaScript"
-    const isCorrect = input.optionId === correctOptionId;
+    const isCorrect = input.optionId === round.correctOptionId;
     const responseMs = input.nowMs - round.startedAtMs;
 
     let awardedScore = 0;
@@ -210,10 +269,10 @@ export class GameStore {
     if (!round) throw new Error("ROUND_NOT_FOUND");
 
     round.status = "ended";
-    const correctOptionId = round.question.options[1].optionId;
+    const correctOptionId = round.correctOptionId;
     const ranking = this.getRanking(room);
 
-    const gameEnded = room.currentQuestionIndex >= this.questions.length - 1;
+    const gameEnded = room.currentQuestionIndex >= room.questionBank.length - 1;
     if (gameEnded) room.status = "finished";
 
     return { round, correctOptionId, ranking, gameEnded };
@@ -224,12 +283,16 @@ export class GameStore {
     status: RoomStatus;
     players: Array<{ playerId: string; username: string }>;
     currentRoundId?: string;
+    questionCount: number;
+    questionSource: "default" | "manual" | "csv";
   } {
     return {
       roomId: room.roomId,
       status: room.status,
       players: Array.from(room.playersById.values()).map((p) => ({ playerId: p.playerId, username: p.username })),
-      currentRoundId: room.currentRound?.roundId
+      currentRoundId: room.currentRound?.roundId,
+      questionCount: room.questionBank.length,
+      questionSource: room.questionSource
     };
   }
 

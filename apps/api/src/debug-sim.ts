@@ -76,26 +76,43 @@ async function main() {
 
   setTimeout(() => {
     host.emit(
+      ClientToServerEvent.HOST_SET_QUESTION_BANK,
+      env(ClientToServerEvent.HOST_SET_QUESTION_BANK, {
+        roomId: ROOM_ID,
+        source: "manual",
+        questions: [
+          {
+            title: "2 + 2 = ?",
+            options: ["1", "3", "4", "5"],
+            correctOptionIndex: 2
+          }
+        ]
+      })
+    );
+  }, 800);
+
+  setTimeout(() => {
+    host.emit(
       ClientToServerEvent.HOST_START_GAME,
       env(ClientToServerEvent.HOST_START_GAME, { roomId: ROOM_ID })
     );
-  }, 800);
+  }, 1300);
 
   setTimeout(() => {
     host.emit(
       ClientToServerEvent.HOST_NEXT_QUESTION,
       env(ClientToServerEvent.HOST_NEXT_QUESTION, { roomId: ROOM_ID })
     );
-  }, 1400);
+  }, 1800);
 
-  // Question fake: correta = optionId "b"
+  // Imported manual question: correta = optionId "c"
   setTimeout(() => {
     p1.emit(
       ClientToServerEvent.PLAYER_SUBMIT_ANSWER,
       env(ClientToServerEvent.PLAYER_SUBMIT_ANSWER, {
         roomId: ROOM_ID,
         roundId: "r_1",
-        optionId: "b"
+        optionId: "c"
       })
     );
   }, 2500);

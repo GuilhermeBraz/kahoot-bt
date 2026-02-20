@@ -2,6 +2,8 @@ import { io, type Socket } from "socket.io-client";
 import {
   ClientToServerEvent,
   ServerToClientEvent,
+  type HostQuestionInput,
+  type HostSetQuestionBankPayload,
   type LeaderboardUpdatedPayload,
   type QuestionEndedPayload,
   type QuestionStartedPayload,
@@ -25,6 +27,7 @@ let currentRoomId = "";
 let currentRoundId = "";
 let connectedUsername = "";
 let isHost = false;
+let draftQuestions: HostQuestionInput[] = [];
 
 const el = {
   modeOrganizerBtn: document.getElementById("modeOrganizerBtn") as HTMLButtonElement,
@@ -44,9 +47,26 @@ const el = {
   sessionInfo: document.getElementById("sessionInfo") as HTMLParagraphElement,
   modeTag: document.getElementById("modeTag") as HTMLSpanElement,
   roomStatus: document.getElementById("roomStatus") as HTMLSpanElement,
+  questionSourceTag: document.getElementById("questionSourceTag") as HTMLSpanElement,
   hostCard: document.getElementById("host-card") as HTMLDivElement,
   startBtn: document.getElementById("startBtn") as HTMLButtonElement,
   nextBtn: document.getElementById("nextBtn") as HTMLButtonElement,
+  questionBankCard: document.getElementById("question-bank-card") as HTMLDivElement,
+  qTitle: document.getElementById("qTitle") as HTMLInputElement,
+  qA: document.getElementById("qA") as HTMLInputElement,
+  qB: document.getElementById("qB") as HTMLInputElement,
+  qC: document.getElementById("qC") as HTMLInputElement,
+  qD: document.getElementById("qD") as HTMLInputElement,
+  qCorrectIndex: document.getElementById("qCorrectIndex") as HTMLInputElement,
+  addManualQuestionBtn: document.getElementById("addManualQuestionBtn") as HTMLButtonElement,
+  csvInput: document.getElementById("csvInput") as HTMLTextAreaElement,
+  csvFileInput: document.getElementById("csvFileInput") as HTMLInputElement,
+  parseCsvBtn: document.getElementById("parseCsvBtn") as HTMLButtonElement,
+  draftQuestions: document.getElementById("draftQuestions") as HTMLOListElement,
+  publishManualBtn: document.getElementById("publishManualBtn") as HTMLButtonElement,
+  publishCsvBtn: document.getElementById("publishCsvBtn") as HTMLButtonElement,
+  clearDraftBtn: document.getElementById("clearDraftBtn") as HTMLButtonElement,
+  questionBankAck: document.getElementById("questionBankAck") as HTMLParagraphElement,
   questionCard: document.getElementById("question-card") as HTMLDivElement,
   questionTitle: document.getElementById("questionTitle") as HTMLHeadingElement,
   timer: document.getElementById("timer") as HTMLParagraphElement,
@@ -95,11 +115,12 @@ function setMode(nextMode: UiMode): void {
   el.modeDebugBtn.classList.remove("active-mode");
 
   show(el.joinCard);
+  hide(el.questionBankCard);
 
   if (nextMode === "organizer") {
     el.modeOrganizerBtn.classList.add("active-mode");
-    el.modeHint.textContent = "Modo organizador: gere a sala e controle o jogo.";
-    el.joinHint.textContent = "Você deve entrar primeiro para assumir o host no MVP atual.";
+    el.modeHint.textContent = "Modo organizador: gere a sala, monte perguntas e controle o jogo.";
+    el.joinHint.textContent = "Entre primeiro para assumir host no MVP atual.";
     show(el.createRoomWrap);
     el.roomId.value = randomRoomId();
     el.generatedRoomId.value = el.roomId.value;
@@ -107,15 +128,15 @@ function setMode(nextMode: UiMode): void {
 
   if (nextMode === "participant") {
     el.modeParticipantBtn.classList.add("active-mode");
-    el.modeHint.textContent = "Modo participante: apenas entre em uma sala existente e responda.";
-    el.joinHint.textContent = "Informe o Room ID fornecido pelo organizador.";
+    el.modeHint.textContent = "Modo participante: entre na sala e responda.";
+    el.joinHint.textContent = "Use o Room ID do organizador.";
     hide(el.createRoomWrap);
   }
 
   if (nextMode === "debug") {
     el.modeDebugBtn.classList.add("active-mode");
-    el.modeHint.textContent = "Modo debug: mostra logs e controles completos para testes.";
-    el.joinHint.textContent = "Use este modo para investigar eventos e estados.";
+    el.modeHint.textContent = "Modo debug: mostra logs e edição completa de perguntas.";
+    el.joinHint.textContent = "Use para validar fluxo e origem das perguntas.";
     show(el.createRoomWrap);
     if (!el.roomId.value.trim()) {
       el.roomId.value = randomRoomId();
@@ -123,6 +144,128 @@ function setMode(nextMode: UiMode): void {
     el.generatedRoomId.value = el.roomId.value;
     show(el.logsCard);
   }
+}
+
+function renderDraftQuestions(): void {
+  el.draftQuestions.innerHTML = "";
+  for (const [idx, q] of draftQuestions.entries()) {
+    const li = document.createElement("li");
+    li.textContent = `${idx + 1}) ${q.title} [correta: ${q.correctOptionIndex + 1}]`;
+    el.draftQuestions.appendChild(li);
+  }
+  if (draftQuestions.length === 0) {
+    const li = document.createElement("li");
+    li.textContent = "Nenhuma pergunta no rascunho.";
+    el.draftQuestions.appendChild(li);
+  }
+}
+
+function pushManualDraft(): void {
+  const title = el.qTitle.value.trim();
+  const options = [el.qA.value.trim(), el.qB.value.trim(), el.qC.value.trim(), el.qD.value.trim()] as [string, string, string, string];
+  const correctOptionHuman = Number(el.qCorrectIndex.value);
+
+  if (!title || options.some((x) => !x) || correctOptionHuman < 1 || correctOptionHuman > 4) {
+    alert("Preencha título, 4 alternativas e resposta correta (1-4).");
+    return;
+  }
+
+  draftQuestions.push({
+    title,
+    options,
+    correctOptionIndex: (correctOptionHuman - 1) as 0 | 1 | 2 | 3
+  });
+
+  el.qTitle.value = "";
+  el.qA.value = "";
+  el.qB.value = "";
+  el.qC.value = "";
+  el.qD.value = "";
+  el.qCorrectIndex.value = "1";
+  renderDraftQuestions();
+}
+
+function parseCsvLine(line: string): string[] {
+  const cols: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const ch = line[i]!;
+    if (ch === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+    if (ch === "," && !inQuotes) {
+      cols.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  cols.push(current.trim());
+  return cols;
+}
+
+function parseCsvTextToDraft(csvText: string): void {
+  const lines = csvText
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter((x) => x.length > 0);
+
+  if (lines.length === 0) {
+    alert("CSV vazio.");
+    return;
+  }
+
+  const parsed: HostQuestionInput[] = [];
+
+  for (const [lineIndex, line] of lines.entries()) {
+    const cols = parseCsvLine(line);
+    if (cols.length !== 6) {
+      throw new Error(`Linha ${lineIndex + 1}: esperado 6 colunas`);
+    }
+
+    const [title, a, b, c, d, correctIndexRaw] = cols;
+    const correctIndexHuman = Number(correctIndexRaw);
+    if (!title || !a || !b || !c || !d || correctIndexHuman < 1 || correctIndexHuman > 4) {
+      throw new Error(`Linha ${lineIndex + 1}: dados inválidos`);
+    }
+
+    parsed.push({
+      title,
+      options: [a, b, c, d],
+      correctOptionIndex: (correctIndexHuman - 1) as 0 | 1 | 2 | 3
+    });
+  }
+
+  draftQuestions = parsed;
+  renderDraftQuestions();
+}
+
+function sendQuestionBank(source: "manual" | "csv"): void {
+  if (!socket || !currentRoomId) return;
+  if (!isHost) {
+    alert("Apenas o host pode publicar perguntas.");
+    return;
+  }
+  if (draftQuestions.length === 0) {
+    alert("Rascunho vazio. Adicione perguntas primeiro.");
+    return;
+  }
+
+  const payload: HostSetQuestionBankPayload = {
+    roomId: currentRoomId,
+    source,
+    questions: draftQuestions
+  };
+
+  socket.emit(
+    ClientToServerEvent.HOST_SET_QUESTION_BANK,
+    env(ClientToServerEvent.HOST_SET_QUESTION_BANK, payload)
+  );
+
+  log("emit host.set_question_bank", { source, questionCount: draftQuestions.length });
 }
 
 function sendJoin(): void {
@@ -189,12 +332,20 @@ function connect(): void {
 
     if (isHost) {
       show(el.hostCard);
+      if (mode === "organizer" || mode === "debug") {
+        show(el.questionBankCard);
+      }
     }
 
     if (mode === "organizer" && !isHost) {
       el.joinHint.textContent = "Você entrou como organizador, mas esta sala já tinha host.";
       el.joinHint.classList.add("warn");
     }
+  });
+
+  socket.on("debug.question_bank_ack", (msg) => {
+    el.questionBankAck.textContent = `Banco publicado com sucesso: ${msg.questionCount} perguntas (${msg.source}).`;
+    log("debug.question_bank_ack", msg);
   });
 
   socket.on("debug.answer_ack", (msg) => {
@@ -204,6 +355,7 @@ function connect(): void {
 
   socket.on(ServerToClientEvent.ROOM_STATE_UPDATED, (msg: WsEnvelope<typeof ServerToClientEvent.ROOM_STATE_UPDATED, RoomStateUpdatedPayload>) => {
     el.roomStatus.textContent = `room status: ${msg.payload.status}`;
+    el.questionSourceTag.textContent = `questions: ${msg.payload.questionSource} (${msg.payload.questionCount})`;
     show(el.sessionCard);
     log("room.state_updated", msg.payload);
   });
@@ -212,6 +364,7 @@ function connect(): void {
     currentRoundId = msg.payload.roundId;
     show(el.questionCard);
     show(el.roundCard);
+    show(el.rankCard);
     el.questionTitle.textContent = msg.payload.question.title;
     el.answerAck.textContent = "";
     el.correctAnswer.textContent = "Correta: aguardando fim da rodada";
@@ -283,6 +436,32 @@ el.generateRoomBtn.addEventListener("click", () => {
 
 el.joinBtn.addEventListener("click", connect);
 
+el.addManualQuestionBtn.addEventListener("click", pushManualDraft);
+el.clearDraftBtn.addEventListener("click", () => {
+  draftQuestions = [];
+  renderDraftQuestions();
+  el.questionBankAck.textContent = "";
+});
+
+el.parseCsvBtn.addEventListener("click", () => {
+  try {
+    parseCsvTextToDraft(el.csvInput.value);
+    el.questionBankAck.textContent = `CSV carregado no rascunho: ${draftQuestions.length} perguntas.`;
+  } catch (error) {
+    alert((error as Error).message);
+  }
+});
+
+el.csvFileInput.addEventListener("change", async () => {
+  const file = el.csvFileInput.files?.[0];
+  if (!file) return;
+  const text = await file.text();
+  el.csvInput.value = text;
+});
+
+el.publishManualBtn.addEventListener("click", () => sendQuestionBank("manual"));
+el.publishCsvBtn.addEventListener("click", () => sendQuestionBank("csv"));
+
 el.startBtn.addEventListener("click", () => {
   if (!socket || !isHost) return;
   const payload = { roomId: currentRoomId };
@@ -297,7 +476,6 @@ el.nextBtn.addEventListener("click", () => {
   log("emit host.next_question", payload);
 });
 
-// Quick defaults from URL.
 const query = new URLSearchParams(window.location.search);
 el.apiUrl.value = query.get("apiUrl") ?? "http://localhost:3333";
 el.roomId.value = query.get("roomId") ?? "";
@@ -309,3 +487,5 @@ if (preMode === "organizer" || preMode === "participant" || preMode === "debug")
 } else {
   setMode("participant");
 }
+
+renderDraftQuestions();

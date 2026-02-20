@@ -9,6 +9,11 @@ O sistema tem dois ambientes principais:
 - **Host**: cria sala, adiciona perguntas e controla o fluxo do jogo.
 - **Participantes**: entram por URL da sala, definem username e respondem em tempo real.
 
+No MVP atual, o host pode montar perguntas de duas formas:
+
+- manualmente pela UI
+- importando CSV pela UI
+
 Cada pergunta:
 
 - possui **4 alternativas**
@@ -191,6 +196,8 @@ kahoot-bt/
 - [ ] Pontuação por milissegundos
 - [ ] Ranking cumulativo atualizado em tempo real
 - [ ] Reveal da resposta correta ao fim da rodada
+- [x] Host cria perguntas na hora (manual)
+- [x] Host importa perguntas via CSV
 
 ### V2
 

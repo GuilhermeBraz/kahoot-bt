@@ -40,6 +40,13 @@ export type Question = {
   durationMs: 120000;
 };
 
+// Input used by organizer UI to configure a room question bank.
+export type HostQuestionInput = {
+  title: string;
+  options: [string, string, string, string];
+  correctOptionIndex: OptionIndex;
+};
+
 export type PlayerSummary = {
   playerId: string;
   username: string;
@@ -73,6 +80,13 @@ export type HostNextQuestionPayload = {
   roomId: string;
 };
 
+// Used only by web-host / organizer mode.
+export type HostSetQuestionBankPayload = {
+  roomId: string;
+  source: "manual" | "csv";
+  questions: HostQuestionInput[];
+};
+
 // Used only by web-player.
 export type PlayerSubmitAnswerPayload = {
   roomId: string;
@@ -89,6 +103,8 @@ export type RoomStateUpdatedPayload = {
   status: RoomStatus;
   players: PlayerSummary[];
   currentRoundId?: string;
+  questionCount: number;
+  questionSource: "default" | "manual" | "csv";
 };
 
 export type QuestionStartedPayload = {
@@ -136,6 +152,7 @@ export type GameEndedPayload = {
 export const ClientToServerEvent = {
   ROOM_JOIN: "room.join",
   HOST_START_GAME: "host.start_game",
+  HOST_SET_QUESTION_BANK: "host.set_question_bank",
   HOST_NEXT_QUESTION: "host.next_question",
   PLAYER_SUBMIT_ANSWER: "player.submit_answer",
 } as const;
@@ -159,6 +176,7 @@ export type ServerToClientEventName =
 export type ClientToServerPayloadMap = {
   [ClientToServerEvent.ROOM_JOIN]: RoomJoinPayload;
   [ClientToServerEvent.HOST_START_GAME]: HostStartGamePayload;
+  [ClientToServerEvent.HOST_SET_QUESTION_BANK]: HostSetQuestionBankPayload;
   [ClientToServerEvent.HOST_NEXT_QUESTION]: HostNextQuestionPayload;
   [ClientToServerEvent.PLAYER_SUBMIT_ANSWER]: PlayerSubmitAnswerPayload;
 };

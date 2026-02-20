@@ -4,6 +4,7 @@ import {
   ClientToServerEvent,
   ServerToClientEvent,
   type HostNextQuestionPayload,
+  type HostSetQuestionBankPayload,
   type HostStartGamePayload,
   type PlayerSubmitAnswerPayload,
   type RoomJoinPayload,
@@ -68,6 +69,28 @@ io.on("connection", (socket) => {
       socket.emit("debug.error", { code: (error as Error).message });
     }
   });
+
+  socket.on(
+    ClientToServerEvent.HOST_SET_QUESTION_BANK,
+    (envelope: WsEnvelope<typeof ClientToServerEvent.HOST_SET_QUESTION_BANK, HostSetQuestionBankPayload>) => {
+      try {
+        const { roomId, source, questions } = envelope.payload;
+        const room = game.getOrCreateRoom(roomId);
+
+        const result = game.setQuestionBank({
+          room,
+          callerSocketId: socket.id,
+          source,
+          questions
+        });
+
+        emitTyped(room.roomId, ServerToClientEvent.ROOM_STATE_UPDATED, game.getRoomStatePayload(room));
+        socket.emit("debug.question_bank_ack", result);
+      } catch (error) {
+        socket.emit("debug.error", { code: (error as Error).message });
+      }
+    }
+  );
 
   socket.on(ClientToServerEvent.HOST_NEXT_QUESTION, (envelope: WsEnvelope<typeof ClientToServerEvent.HOST_NEXT_QUESTION, HostNextQuestionPayload>) => {
     try {
